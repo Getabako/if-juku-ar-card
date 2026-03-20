@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Target Compiler</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', sans-serif;
+      max-width: 560px; margin: 0 auto; padding: 40px 20px;
+      background: #f5f5f5; color: #333;
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    .sub { color: #888; font-size: 14px; margin-bottom: 32px; }
+    .step { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .step-num { display: inline-block; width: 28px; height: 28px; border-radius: 50%; background: #FF8C00; color: white; text-align: center; line-height: 28px; font-size: 14px; font-weight: 700; margin-right: 10px; }
+    .step h2 { display: inline; font-size: 16px; }
+    .step p { margin-top: 10px; font-size: 14px; color: #666; }
+    input[type="file"] { margin-top: 12px; }
+    #preview { max-width: 100%; margin-top: 12px; border-radius: 8px; display: none; border: 1px solid #eee; }
+    button {
+      margin-top: 16px; padding: 14px 32px;
+      background: #FF8C00; color: white; border: none; border-radius: 10px;
+      font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    button:hover { background: #e67e00; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #progress-bar { margin-top: 16px; height: 6px; border-radius: 3px; background: #eee; overflow: hidden; display: none; }
+    #progress-fill { height: 100%; width: 0%; background: #FF8C00; border-radius: 3px; transition: width 0.3s; }
+    #status { margin-top: 12px; font-size: 14px; color: #666; min-height: 20px; }
+    .success { color: #22c55e !important; font-weight: 600; }
+    .error { color: #ef4444 !important; }
+  </style>
+</head>
+<body>
+  <h1>AR Target Compiler</h1>
+  <p class="sub">名刺の裏面画像をARマーカーファイル (.mind) にコンパイルします</p>
+
+  <div class="step">
+    <span class="step-num">1</span>
+    <h2>画像を選択</h2>
+    <p>名刺の裏面画像 (2.png) を選んでください</p>
+    <input type="file" id="imageInput" accept="image/*">
+    <img id="preview">
+  </div>
+
+  <div class="step">
+    <span class="step-num">2</span>
+    <h2>コンパイル</h2>
+    <p>画像をAR認識用データに変換します（10〜30秒）</p>
+    <button id="compileBtn" disabled>コンパイル開始</button>
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+    <div id="status"></div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">3</span>
+    <h2>配置</h2>
+    <p>ダウンロードされた <code>targets.mind</code> を <code>index.html</code> と同じフォルダに置いてデプロイしてください。</p>
+  </div>
+
+  <script type="module">
+    import { Compiler } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';
+
+    const input      = document.getElementById('imageInput');
+    const preview    = document.getElementById('preview');
+    const compileBtn = document.getElementById('compileBtn');
+    const progressBar  = document.getElementById('progress-bar');
+    const progressFill = document.getElementById('progress-fill');
+    const status     = document.getElementById('status');
+
+    let selectedImage = null;
+
+    input.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      preview.style.display = 'block';
+
+      const img = new Image();
+      img.onload = () => {
+        selectedImage = img;
+        compileBtn.disabled = false;
+        status.textContent = `${img.width} x ${img.height} px`;
+        status.className = '';
+      };
+      img.src = url;
+    });
+
+    compileBtn.addEventListener('click', async () => {
+      if (!selectedImage) return;
+      compileBtn.disabled = true;
+      progressBar.style.display = 'block';
+      progressFill.style.width = '0%';
+      status.textContent = 'コンパイル中...';
+      status.className = '';
+
+      try {
+        const compiler = new Compiler();
+        await compiler.compileImageTargets([selectedImage], (p) => {
+          const pct = Math.round(p * 100);
+          progressFill.style.width = pct + '%';
+          status.textContent = `コンパイル中... ${pct}%`;
+        });
+
+        const data = compiler.exportData();
+        const blob = new Blob([data]);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'targets.mind';
+        a.click();
+        URL.revokeObjectURL(a.href);
+
+        status.textContent = 'targets.mind をダウンロードしました！';
+        status.className = 'success';
+      } catch (err) {
+        status.textContent = 'エラー: ' + err.message;
+        status.className = 'error';
+        console.error(err);
+      }
+      compileBtn.disabled = false;
+    });
+  </script>
+</body>
+</html>

@@ -25,9 +25,7 @@
     .logo { font-size: 36px; font-weight: bold; color: #FF8C00; margin-bottom: 24px; }
     .progress-ring { position: relative; width: 64px; height: 64px; margin-bottom: 16px; }
     .progress-ring svg { transform: rotate(-90deg); }
-    .progress-ring circle {
-      fill: none; stroke-width: 4; cx: 32; cy: 32; r: 28;
-    }
+    .progress-ring circle { fill: none; stroke-width: 4; cx: 32; cy: 32; r: 28; }
     .ring-bg { stroke: rgba(255,140,0,0.15); }
     .ring-fg { stroke: #FF8C00; stroke-dasharray: 175.9; stroke-dashoffset: 175.9; stroke-linecap: round; transition: stroke-dashoffset 0.3s; }
     .progress-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: #FF8C00; }
@@ -68,9 +66,7 @@
       background: linear-gradient(135deg, #1877F2 0%, #0d65d9 100%);
       box-shadow: 0 8px 32px rgba(24, 119, 242, 0.5), 0 0 60px rgba(24, 119, 242, 0.15);
     }
-    .social-btn.animate {
-      animation: btnAppear 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-    }
+    .social-btn.animate { animation: btnAppear 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
     .social-btn:active { transform: scale(0.93) !important; transition: transform 0.1s; }
     .social-btn .icon { width: 24px; height: 24px; flex-shrink: 0; }
     .social-btn::after {
@@ -97,17 +93,12 @@
       padding: 6px 18px; border-radius: 20px;
       opacity: 0; transform: translateY(10px);
     }
-    .ar-brand.animate {
-      animation: btnAppear 0.5s 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-    }
+    .ar-brand.animate { animation: btnAppear 0.5s 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
 
     /* ===== Particles ===== */
     .particles { position: fixed; inset: 0; z-index: 45; pointer-events: none; opacity: 0; transition: opacity 0.6s; }
     .particles.visible { opacity: 1; }
-    .particle {
-      position: absolute; width: 6px; height: 6px; border-radius: 50%;
-      background: #FF8C00; opacity: 0;
-    }
+    .particle { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #FF8C00; opacity: 0; }
     .particle.animate { animation: particleFloat var(--dur) var(--delay) ease-out forwards; }
     @keyframes particleFloat {
       0%   { opacity: 0.8; transform: translate(0, 0) scale(1); }
@@ -162,19 +153,14 @@
 
   <!-- Error -->
   <div id="error">
-    <h2>カメラにアクセスできません</h2>
-    <p>ブラウザの設定でカメラへのアクセスを許可してください。HTTPS 接続が必要です。</p>
+    <h2>エラーが発生しました</h2>
+    <p id="error-msg">ブラウザの設定でカメラへのアクセスを許可してください。</p>
   </div>
 
-  <script>
+  <!-- Main logic as ES module (for MindAR Compiler import) -->
+  <script type="module">
     // =============================================
-    // Config
-    // =============================================
-    const TARGET_IMAGE = '2.png';
-    const CACHE_KEY    = 'if-juku-ar-mind-v1';
-
-    // =============================================
-    // UI references
+    // UI helpers
     // =============================================
     const $loading  = document.getElementById('loading');
     const $status   = document.getElementById('loading-status');
@@ -186,13 +172,26 @@
     const $fbBtn    = document.querySelector('.social-btn');
     const $brand    = document.querySelector('.ar-brand');
     const $error    = document.getElementById('error');
-
-    const CIRCUMFERENCE = 2 * Math.PI * 28; // ring radius = 28
+    const $errorMsg = document.getElementById('error-msg');
+    const CIRCUMFERENCE = 2 * Math.PI * 28;
 
     function setProgress(ratio) {
-      const p = Math.round(ratio * 100);
       $ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - ratio);
-      $pct.textContent = p + '%';
+      $pct.textContent = Math.round(ratio * 100) + '%';
+    }
+
+    function showError(msg) {
+      $errorMsg.textContent = msg;
+      $error.classList.add('show');
+      $loading.classList.add('hide');
+    }
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('Script load failed: ' + src));
+        document.head.appendChild(s);
+      });
     }
 
     // =============================================
@@ -206,181 +205,21 @@
         req.onerror   = () => reject(req.error);
       });
     }
-    async function getCache() {
+    async function getCache(key) {
       try {
         const db = await openDB();
         return new Promise(r => {
-          const req = db.transaction('cache','readonly').objectStore('cache').get(CACHE_KEY);
+          const req = db.transaction('cache','readonly').objectStore('cache').get(key);
           req.onsuccess = () => r(req.result || null);
           req.onerror   = () => r(null);
         });
       } catch { return null; }
     }
-    async function setCache(data) {
+    async function setCache(key, data) {
       try {
         const db = await openDB();
-        db.transaction('cache','readwrite').objectStore('cache').put(data, CACHE_KEY);
+        db.transaction('cache','readwrite').objectStore('cache').put(data, key);
       } catch {}
-    }
-
-    // =============================================
-    // Script loader
-    // =============================================
-    function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = src; s.onload = resolve; s.onerror = reject;
-        document.head.appendChild(s);
-      });
-    }
-
-    // =============================================
-    // Main
-    // =============================================
-    (async function main() {
-      try {
-        let mindUrl;
-
-        // --- Step 1: Get compiled target data ---
-        // Try pre-compiled file first
-        $status.textContent = 'AR データを読み込み中...';
-        setProgress(0.05);
-
-        let precompiled = false;
-        try {
-          const resp = await fetch('targets.mind');
-          if (resp.ok) {
-            mindUrl = URL.createObjectURL(await resp.blob());
-            precompiled = true;
-            setProgress(0.5);
-          }
-        } catch {}
-
-        if (!precompiled) {
-          // Check IndexedDB cache
-          const cached = await getCache();
-          if (cached) {
-            $status.textContent = 'キャッシュからロード中...';
-            mindUrl = URL.createObjectURL(new Blob([cached]));
-            setProgress(0.5);
-          } else {
-            // Runtime compilation
-            $status.textContent = 'AR エンジンを読み込み中...';
-            setProgress(0.1);
-            await loadScript('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js');
-
-            const CompilerClass = window.MINDAR?.IMAGE?.Compiler;
-            if (!CompilerClass) throw new Error('Compiler not available');
-
-            $status.textContent = '初回のみ: マーカーを生成中...';
-            setProgress(0.15);
-
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.src = TARGET_IMAGE;
-            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
-
-            const compiler = new CompilerClass();
-            await compiler.compileImageTargets([img], (p) => {
-              setProgress(0.15 + p * 0.35);
-              $status.textContent = `マーカーを生成中... ${Math.round(p * 100)}%`;
-            });
-
-            const data = compiler.exportData();
-            await setCache(data);
-            mindUrl = URL.createObjectURL(new Blob([data]));
-            setProgress(0.5);
-          }
-        }
-
-        // --- Step 2: Load A-Frame + MindAR A-Frame ---
-        $status.textContent = 'AR シーンを構築中...';
-        setProgress(0.6);
-        await loadScript('https://aframe.io/releases/1.5.0/aframe.min.js');
-        setProgress(0.75);
-        await loadScript('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js');
-        setProgress(0.9);
-
-        // --- Step 3: Create scene ---
-        $status.textContent = 'カメラを起動中...';
-        createScene(mindUrl);
-
-      } catch (err) {
-        console.error('AR init failed:', err);
-        $error.classList.add('show');
-        $loading.classList.add('hide');
-      }
-    })();
-
-    // =============================================
-    // Scene Builder
-    // =============================================
-    function createScene(mindUrl) {
-      const scene = document.createElement('a-scene');
-      scene.setAttribute('mindar-image',
-        `imageTargetSrc: ${mindUrl}; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;`
-      );
-      scene.setAttribute('color-space', 'sRGB');
-      scene.setAttribute('renderer', 'colorManagement: true');
-      scene.setAttribute('vr-mode-ui', 'enabled: false');
-      scene.setAttribute('device-permission-ui', 'enabled: false');
-
-      // Camera
-      const cam = document.createElement('a-camera');
-      cam.setAttribute('position', '0 0 0');
-      cam.setAttribute('look-controls', 'enabled: false');
-      scene.appendChild(cam);
-
-      // Target entity
-      const target = document.createElement('a-entity');
-      target.setAttribute('mindar-image-target', 'targetIndex: 0');
-
-      // Orange glow on card
-      const glow = document.createElement('a-plane');
-      glow.setAttribute('width', '1.05');
-      glow.setAttribute('height', '0.68');
-      glow.setAttribute('position', '0 0 0');
-      glow.setAttribute('material', 'color: #FF8C00; opacity: 0; transparent: true; shader: flat; side: double;');
-      glow.setAttribute('animation', 'property: material.opacity; from: 0; to: 0.2; dur: 600; easing: easeOutQuad;');
-      glow.setAttribute('animation__pulse', 'property: material.opacity; from: 0.12; to: 0.28; dur: 1400; dir: alternate; loop: true; easing: easeInOutSine; startEvents: animationcomplete;');
-      target.appendChild(glow);
-
-      scene.appendChild(target);
-      document.body.appendChild(scene);
-
-      // Events
-      scene.addEventListener('arReady', () => {
-        setProgress(1);
-        setTimeout(() => {
-          $loading.classList.add('hide');
-          $scanHint.classList.remove('hidden');
-        }, 400);
-      });
-
-      // Fallback if arReady never fires
-      setTimeout(() => {
-        if (!$loading.classList.contains('hide')) {
-          $loading.classList.add('hide');
-          $scanHint.classList.remove('hidden');
-        }
-      }, 8000);
-
-      target.addEventListener('targetFound', () => {
-        $scanHint.classList.add('hidden');
-        $arContent.classList.add('visible');
-        $particles.classList.add('visible');
-        $fbBtn.classList.add('animate');
-        $brand.classList.add('animate');
-        spawnParticles();
-      });
-
-      target.addEventListener('targetLost', () => {
-        $scanHint.classList.remove('hidden');
-        $arContent.classList.remove('visible');
-        $particles.classList.remove('visible');
-        $fbBtn.classList.remove('animate');
-        $brand.classList.remove('animate');
-      });
     }
 
     // =============================================
@@ -401,6 +240,142 @@
         p.style.width = p.style.height = size + 'px';
         $particles.appendChild(p);
       }
+    }
+
+    // =============================================
+    // Main
+    // =============================================
+    try {
+      let mindUrl;
+      const CACHE_KEY = 'if-juku-ar-mind-v2';
+
+      // --- Step 1: Try pre-compiled targets.mind ---
+      $status.textContent = 'AR データを読み込み中...';
+      setProgress(0.05);
+
+      let gotTarget = false;
+      try {
+        const resp = await fetch('targets.mind');
+        if (resp.ok) {
+          mindUrl = URL.createObjectURL(await resp.blob());
+          gotTarget = true;
+          setProgress(0.5);
+        }
+      } catch {}
+
+      // --- Step 2: Try IndexedDB cache ---
+      if (!gotTarget) {
+        const cached = await getCache(CACHE_KEY);
+        if (cached) {
+          $status.textContent = 'キャッシュからロード中...';
+          mindUrl = URL.createObjectURL(new Blob([cached]));
+          gotTarget = true;
+          setProgress(0.5);
+        }
+      }
+
+      // --- Step 3: Runtime compilation via ES module import ---
+      if (!gotTarget) {
+        $status.textContent = '初回のみ: AR エンジンを読み込み中...';
+        setProgress(0.1);
+
+        const { Compiler } = await import('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js');
+
+        $status.textContent = '初回のみ: マーカーを生成中...';
+        setProgress(0.15);
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = '2.png';
+        await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('画像の読み込みに失敗')); });
+
+        const compiler = new Compiler();
+        await compiler.compileImageTargets([img], (p) => {
+          setProgress(0.15 + p * 0.35);
+          $status.textContent = `マーカーを生成中... ${Math.round(p * 100)}%`;
+        });
+
+        const data = compiler.exportData();
+        await setCache(CACHE_KEY, data);
+        mindUrl = URL.createObjectURL(new Blob([data]));
+        setProgress(0.5);
+      }
+
+      // --- Step 4: Load A-Frame + MindAR A-Frame (IIFE versions) ---
+      $status.textContent = 'AR シーンを構築中...';
+      setProgress(0.6);
+      await loadScript('https://aframe.io/releases/1.5.0/aframe.min.js');
+      setProgress(0.75);
+      await loadScript('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js');
+      setProgress(0.9);
+
+      // --- Step 5: Create scene ---
+      $status.textContent = 'カメラを起動中...';
+
+      const scene = document.createElement('a-scene');
+      scene.setAttribute('mindar-image',
+        `imageTargetSrc: ${mindUrl}; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;`
+      );
+      scene.setAttribute('color-space', 'sRGB');
+      scene.setAttribute('renderer', 'colorManagement: true');
+      scene.setAttribute('vr-mode-ui', 'enabled: false');
+      scene.setAttribute('device-permission-ui', 'enabled: false');
+
+      const cam = document.createElement('a-camera');
+      cam.setAttribute('position', '0 0 0');
+      cam.setAttribute('look-controls', 'enabled: false');
+      scene.appendChild(cam);
+
+      const target = document.createElement('a-entity');
+      target.setAttribute('mindar-image-target', 'targetIndex: 0');
+
+      const glow = document.createElement('a-plane');
+      glow.setAttribute('width', '1.05');
+      glow.setAttribute('height', '0.68');
+      glow.setAttribute('position', '0 0 0');
+      glow.setAttribute('material', 'color: #FF8C00; opacity: 0; transparent: true; shader: flat; side: double;');
+      glow.setAttribute('animation', 'property: material.opacity; from: 0; to: 0.2; dur: 600; easing: easeOutQuad;');
+      glow.setAttribute('animation__pulse', 'property: material.opacity; from: 0.12; to: 0.28; dur: 1400; dir: alternate; loop: true; easing: easeInOutSine; startEvents: animationcomplete;');
+      target.appendChild(glow);
+      scene.appendChild(target);
+      document.body.appendChild(scene);
+
+      // AR events
+      scene.addEventListener('arReady', () => {
+        setProgress(1);
+        setTimeout(() => {
+          $loading.classList.add('hide');
+          $scanHint.classList.remove('hidden');
+        }, 400);
+      });
+
+      setTimeout(() => {
+        if (!$loading.classList.contains('hide')) {
+          $loading.classList.add('hide');
+          $scanHint.classList.remove('hidden');
+        }
+      }, 10000);
+
+      target.addEventListener('targetFound', () => {
+        $scanHint.classList.add('hidden');
+        $arContent.classList.add('visible');
+        $particles.classList.add('visible');
+        $fbBtn.classList.add('animate');
+        $brand.classList.add('animate');
+        spawnParticles();
+      });
+
+      target.addEventListener('targetLost', () => {
+        $scanHint.classList.remove('hidden');
+        $arContent.classList.remove('visible');
+        $particles.classList.remove('visible');
+        $fbBtn.classList.remove('animate');
+        $brand.classList.remove('animate');
+      });
+
+    } catch (err) {
+      console.error('AR init failed:', err);
+      showError(err.message || 'AR の初期化に失敗しました');
     }
   </script>
 </body>
