@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>if(塾) AR名刺</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', sans-serif;
+      overflow: hidden;
+      background: #000;
+      width: 100vw; height: 100vh;
+    }
+
+    /* ===== Loading ===== */
+    #loading {
+      position: fixed; inset: 0; z-index: 200;
+      background: #000;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      color: white;
+      transition: opacity 0.6s;
+    }
+    #loading.hide { opacity: 0; pointer-events: none; }
+    .logo { font-size: 36px; font-weight: bold; color: #FF8C00; margin-bottom: 24px; }
+    .progress-ring { position: relative; width: 64px; height: 64px; margin-bottom: 16px; }
+    .progress-ring svg { transform: rotate(-90deg); }
+    .progress-ring circle {
+      fill: none; stroke-width: 4; cx: 32; cy: 32; r: 28;
+    }
+    .ring-bg { stroke: rgba(255,140,0,0.15); }
+    .ring-fg { stroke: #FF8C00; stroke-dasharray: 175.9; stroke-dashoffset: 175.9; stroke-linecap: round; transition: stroke-dashoffset 0.3s; }
+    .progress-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: #FF8C00; }
+    #loading-status { font-size: 13px; color: rgba(255,255,255,0.5); text-align: center; max-width: 260px; }
+
+    /* ===== Scan Hint ===== */
+    #scan-hint {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      z-index: 100;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      color: white;
+      padding: 14px 28px; border-radius: 24px;
+      font-size: 15px; white-space: nowrap;
+      transition: opacity 0.4s, transform 0.4s;
+    }
+    #scan-hint.hidden { opacity: 0; transform: translateX(-50%) translateY(20px); pointer-events: none; }
+
+    /* ===== AR Content ===== */
+    #ar-content {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      pointer-events: none; opacity: 0;
+      transition: opacity 0.4s;
+    }
+    #ar-content.visible { opacity: 1; pointer-events: auto; }
+
+    /* ===== Social Button ===== */
+    .social-btn {
+      display: flex; align-items: center; gap: 14px;
+      padding: 18px 40px; border-radius: 50px;
+      font-size: 18px; font-weight: 700;
+      text-decoration: none; color: white;
+      cursor: pointer; position: relative; overflow: hidden;
+      transform: translateY(30px) scale(0.9); opacity: 0;
+    }
+    .social-btn.fb {
+      background: linear-gradient(135deg, #1877F2 0%, #0d65d9 100%);
+      box-shadow: 0 8px 32px rgba(24, 119, 242, 0.5), 0 0 60px rgba(24, 119, 242, 0.15);
+    }
+    .social-btn.animate {
+      animation: btnAppear 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    .social-btn:active { transform: scale(0.93) !important; transition: transform 0.1s; }
+    .social-btn .icon { width: 24px; height: 24px; flex-shrink: 0; }
+    .social-btn::after {
+      content: ''; position: absolute; top: 0; left: -100%;
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+      animation: shimmer 3s 1.2s infinite;
+    }
+
+    @keyframes btnAppear {
+      0%   { transform: translateY(30px) scale(0.9); opacity: 0; }
+      100% { transform: translateY(0) scale(1);      opacity: 1; }
+    }
+    @keyframes shimmer {
+      0%   { left: -100%; }
+      25%  { left: 100%; }
+      100% { left: 100%; }
+    }
+
+    .ar-brand {
+      margin-top: 28px; color: rgba(255,255,255,0.55); font-size: 12px;
+      background: rgba(0,0,0,0.4);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      padding: 6px 18px; border-radius: 20px;
+      opacity: 0; transform: translateY(10px);
+    }
+    .ar-brand.animate {
+      animation: btnAppear 0.5s 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    /* ===== Particles ===== */
+    .particles { position: fixed; inset: 0; z-index: 45; pointer-events: none; opacity: 0; transition: opacity 0.6s; }
+    .particles.visible { opacity: 1; }
+    .particle {
+      position: absolute; width: 6px; height: 6px; border-radius: 50%;
+      background: #FF8C00; opacity: 0;
+    }
+    .particle.animate { animation: particleFloat var(--dur) var(--delay) ease-out forwards; }
+    @keyframes particleFloat {
+      0%   { opacity: 0.8; transform: translate(0, 0) scale(1); }
+      100% { opacity: 0;   transform: translate(var(--dx), var(--dy)) scale(0); }
+    }
+
+    /* ===== Error ===== */
+    #error {
+      position: fixed; inset: 0; z-index: 300;
+      background: #000; color: white;
+      display: none; flex-direction: column; justify-content: center; align-items: center;
+      padding: 32px; text-align: center;
+    }
+    #error.show { display: flex; }
+    #error h2 { color: #FF8C00; margin-bottom: 12px; }
+    #error p { color: rgba(255,255,255,0.6); font-size: 14px; line-height: 1.6; max-width: 320px; }
+  </style>
+</head>
+<body>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="logo">if(塾)</div>
+    <div class="progress-ring">
+      <svg width="64" height="64">
+        <circle class="ring-bg" />
+        <circle class="ring-fg" id="ring" />
+      </svg>
+      <div class="progress-pct" id="pct">0%</div>
+    </div>
+    <p id="loading-status">AR を準備中...</p>
+  </div>
+
+  <!-- Scan Instruction -->
+  <div id="scan-hint" class="hidden">名刺の裏面にカメラをかざしてください</div>
+
+  <!-- Particles -->
+  <div class="particles" id="particles"></div>
+
+  <!-- AR Buttons -->
+  <div id="ar-content">
+    <a class="social-btn fb"
+       href="https://www.facebook.com/shota.takasaki.37"
+       target="_blank" rel="noopener noreferrer">
+      <svg class="icon" viewBox="0 0 24 24" fill="white">
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+      </svg>
+      友達になる
+    </a>
+    <div class="ar-brand">if(塾) AR名刺</div>
+  </div>
+
+  <!-- Error -->
+  <div id="error">
+    <h2>カメラにアクセスできません</h2>
+    <p>ブラウザの設定でカメラへのアクセスを許可してください。HTTPS 接続が必要です。</p>
+  </div>
+
+  <script>
+    // =============================================
+    // Config
+    // =============================================
+    const TARGET_IMAGE = '2.png';
+    const CACHE_KEY    = 'if-juku-ar-mind-v1';
+
+    // =============================================
+    // UI references
+    // =============================================
+    const $loading  = document.getElementById('loading');
+    const $status   = document.getElementById('loading-status');
+    const $ring     = document.getElementById('ring');
+    const $pct      = document.getElementById('pct');
+    const $scanHint = document.getElementById('scan-hint');
+    const $arContent= document.getElementById('ar-content');
+    const $particles= document.getElementById('particles');
+    const $fbBtn    = document.querySelector('.social-btn');
+    const $brand    = document.querySelector('.ar-brand');
+    const $error    = document.getElementById('error');
+
+    const CIRCUMFERENCE = 2 * Math.PI * 28; // ring radius = 28
+
+    function setProgress(ratio) {
+      const p = Math.round(ratio * 100);
+      $ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - ratio);
+      $pct.textContent = p + '%';
+    }
+
+    // =============================================
+    // IndexedDB Cache
+    // =============================================
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open('if-juku-ar', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('cache');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror   = () => reject(req.error);
+      });
+    }
+    async function getCache() {
+      try {
+        const db = await openDB();
+        return new Promise(r => {
+          const req = db.transaction('cache','readonly').objectStore('cache').get(CACHE_KEY);
+          req.onsuccess = () => r(req.result || null);
+          req.onerror   = () => r(null);
+        });
+      } catch { return null; }
+    }
+    async function setCache(data) {
+      try {
+        const db = await openDB();
+        db.transaction('cache','readwrite').objectStore('cache').put(data, CACHE_KEY);
+      } catch {}
+    }
+
+    // =============================================
+    // Script loader
+    // =============================================
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    // =============================================
+    // Main
+    // =============================================
+    (async function main() {
+      try {
+        let mindUrl;
+
+        // --- Step 1: Get compiled target data ---
+        // Try pre-compiled file first
+        $status.textContent = 'AR データを読み込み中...';
+        setProgress(0.05);
+
+        let precompiled = false;
+        try {
+          const resp = await fetch('targets.mind');
+          if (resp.ok) {
+            mindUrl = URL.createObjectURL(await resp.blob());
+            precompiled = true;
+            setProgress(0.5);
+          }
+        } catch {}
+
+        if (!precompiled) {
+          // Check IndexedDB cache
+          const cached = await getCache();
+          if (cached) {
+            $status.textContent = 'キャッシュからロード中...';
+            mindUrl = URL.createObjectURL(new Blob([cached]));
+            setProgress(0.5);
+          } else {
+            // Runtime compilation
+            $status.textContent = 'AR エンジンを読み込み中...';
+            setProgress(0.1);
+            await loadScript('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js');
+
+            const CompilerClass = window.MINDAR?.IMAGE?.Compiler;
+            if (!CompilerClass) throw new Error('Compiler not available');
+
+            $status.textContent = '初回のみ: マーカーを生成中...';
+            setProgress(0.15);
+
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = TARGET_IMAGE;
+            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+
+            const compiler = new CompilerClass();
+            await compiler.compileImageTargets([img], (p) => {
+              setProgress(0.15 + p * 0.35);
+              $status.textContent = `マーカーを生成中... ${Math.round(p * 100)}%`;
+            });
+
+            const data = compiler.exportData();
+            await setCache(data);
+            mindUrl = URL.createObjectURL(new Blob([data]));
+            setProgress(0.5);
+          }
+        }
+
+        // --- Step 2: Load A-Frame + MindAR A-Frame ---
+        $status.textContent = 'AR シーンを構築中...';
+        setProgress(0.6);
+        await loadScript('https://aframe.io/releases/1.5.0/aframe.min.js');
+        setProgress(0.75);
+        await loadScript('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js');
+        setProgress(0.9);
+
+        // --- Step 3: Create scene ---
+        $status.textContent = 'カメラを起動中...';
+        createScene(mindUrl);
+
+      } catch (err) {
+        console.error('AR init failed:', err);
+        $error.classList.add('show');
+        $loading.classList.add('hide');
+      }
+    })();
+
+    // =============================================
+    // Scene Builder
+    // =============================================
+    function createScene(mindUrl) {
+      const scene = document.createElement('a-scene');
+      scene.setAttribute('mindar-image',
+        `imageTargetSrc: ${mindUrl}; autoStart: true; uiLoading: no; uiError: no; uiScanning: no;`
+      );
+      scene.setAttribute('color-space', 'sRGB');
+      scene.setAttribute('renderer', 'colorManagement: true');
+      scene.setAttribute('vr-mode-ui', 'enabled: false');
+      scene.setAttribute('device-permission-ui', 'enabled: false');
+
+      // Camera
+      const cam = document.createElement('a-camera');
+      cam.setAttribute('position', '0 0 0');
+      cam.setAttribute('look-controls', 'enabled: false');
+      scene.appendChild(cam);
+
+      // Target entity
+      const target = document.createElement('a-entity');
+      target.setAttribute('mindar-image-target', 'targetIndex: 0');
+
+      // Orange glow on card
+      const glow = document.createElement('a-plane');
+      glow.setAttribute('width', '1.05');
+      glow.setAttribute('height', '0.68');
+      glow.setAttribute('position', '0 0 0');
+      glow.setAttribute('material', 'color: #FF8C00; opacity: 0; transparent: true; shader: flat; side: double;');
+      glow.setAttribute('animation', 'property: material.opacity; from: 0; to: 0.2; dur: 600; easing: easeOutQuad;');
+      glow.setAttribute('animation__pulse', 'property: material.opacity; from: 0.12; to: 0.28; dur: 1400; dir: alternate; loop: true; easing: easeInOutSine; startEvents: animationcomplete;');
+      target.appendChild(glow);
+
+      scene.appendChild(target);
+      document.body.appendChild(scene);
+
+      // Events
+      scene.addEventListener('arReady', () => {
+        setProgress(1);
+        setTimeout(() => {
+          $loading.classList.add('hide');
+          $scanHint.classList.remove('hidden');
+        }, 400);
+      });
+
+      // Fallback if arReady never fires
+      setTimeout(() => {
+        if (!$loading.classList.contains('hide')) {
+          $loading.classList.add('hide');
+          $scanHint.classList.remove('hidden');
+        }
+      }, 8000);
+
+      target.addEventListener('targetFound', () => {
+        $scanHint.classList.add('hidden');
+        $arContent.classList.add('visible');
+        $particles.classList.add('visible');
+        $fbBtn.classList.add('animate');
+        $brand.classList.add('animate');
+        spawnParticles();
+      });
+
+      target.addEventListener('targetLost', () => {
+        $scanHint.classList.remove('hidden');
+        $arContent.classList.remove('visible');
+        $particles.classList.remove('visible');
+        $fbBtn.classList.remove('animate');
+        $brand.classList.remove('animate');
+      });
+    }
+
+    // =============================================
+    // Particles
+    // =============================================
+    function spawnParticles() {
+      $particles.innerHTML = '';
+      for (let i = 0; i < 18; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle animate';
+        p.style.left = (50 + (Math.random() - 0.5) * 24) + '%';
+        p.style.top  = (50 + (Math.random() - 0.5) * 24) + '%';
+        p.style.setProperty('--dx', (Math.random() - 0.5) * 140 + 'px');
+        p.style.setProperty('--dy', -(30 + Math.random() * 90) + 'px');
+        p.style.setProperty('--dur', (0.8 + Math.random() * 1.2) + 's');
+        p.style.setProperty('--delay', (Math.random() * 0.4) + 's');
+        const size = 4 + Math.random() * 6;
+        p.style.width = p.style.height = size + 'px';
+        $particles.appendChild(p);
+      }
+    }
+  </script>
+</body>
+</html>
