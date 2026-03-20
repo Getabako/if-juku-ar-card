@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Debug</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #0f0; padding: 16px; font-size: 14px; }
+    .log { margin: 4px 0; }
+    .error { color: #f44; }
+    .success { color: #4f4; }
+    .info { color: #4af; }
+  </style>
+</head>
+<body>
+  <h2>AR Debug Log</h2>
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg, type = '') {
+      const d = document.createElement('div');
+      d.className = 'log ' + type;
+      d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.appendChild(d);
+      console.log(msg);
+    }
+
+    (async function() {
+      try {
+        // Step 1: Check 2.png
+        log('Step 1: Fetching 2.png...');
+        const imgResp = await fetch('2.png');
+        log(`2.png status: ${imgResp.status} (${imgResp.headers.get('content-type')})`, imgResp.ok ? 'success' : 'error');
+
+        // Step 2: Load MindAR image
+        log('Step 2: Loading mindar-image.prod.js...');
+        await loadScript('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js');
+        log('mindar-image.prod.js loaded', 'success');
+
+        // Step 3: Check MINDAR object
+        log(`Step 3: window.MINDAR exists: ${!!window.MINDAR}`);
+        log(`MINDAR.IMAGE exists: ${!!window.MINDAR?.IMAGE}`);
+        log(`MINDAR.IMAGE keys: ${Object.keys(window.MINDAR?.IMAGE || {}).join(', ')}`, 'info');
+        log(`Compiler exists: ${!!window.MINDAR?.IMAGE?.Compiler}`, window.MINDAR?.IMAGE?.Compiler ? 'success' : 'error');
+
+        // Step 4: Try compilation
+        if (window.MINDAR?.IMAGE?.Compiler) {
+          log('Step 4: Starting compilation...');
+          const compiler = new window.MINDAR.IMAGE.Compiler();
+          log('Compiler instantiated', 'success');
+
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = '2.png';
+          await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('Image load failed')); });
+          log(`Image loaded: ${img.width}x${img.height}`, 'success');
+
+          log('Compiling image target (this takes 10-30s)...');
+          await compiler.compileImageTargets([img], (p) => {
+            if (Math.round(p * 100) % 20 === 0) log(`  Progress: ${Math.round(p * 100)}%`);
+          });
+          log('Compilation complete!', 'success');
+
+          const data = compiler.exportData();
+          log(`Exported data: ${data.byteLength} bytes`, 'success');
+
+          // Download the compiled file
+          const blob = new Blob([data]);
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'targets.mind';
+          a.textContent = '>>> DOWNLOAD targets.mind <<<';
+          a.style.cssText = 'display:block;margin:20px 0;padding:16px;background:#1877F2;color:white;text-decoration:none;text-align:center;border-radius:8px;font-size:18px;';
+          logEl.appendChild(a);
+        }
+
+        // Step 5: Try loading A-Frame
+        log('Step 5: Loading A-Frame...');
+        await loadScript('https://aframe.io/releases/1.5.0/aframe.min.js');
+        log('A-Frame loaded', 'success');
+
+        // Step 6: Try loading MindAR A-Frame
+        log('Step 6: Loading mindar-image-aframe.prod.js...');
+        await loadScript('https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js');
+        log('mindar-image-aframe loaded', 'success');
+
+        log('=== All steps passed ===', 'success');
+
+      } catch (err) {
+        log(`ERROR: ${err.message}`, 'error');
+        log(`Stack: ${err.stack}`, 'error');
+      }
+    })();
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error(`Failed to load: ${src}`));
+        document.head.appendChild(s);
+      });
+    }
+  </script>
+</body>
+</html>
